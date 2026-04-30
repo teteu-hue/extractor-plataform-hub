@@ -71,9 +71,44 @@ getOrder(OrderId.create("12345")); // garante que é válido
 
 ### O que são Entities (`domain/entities/`)
 
-Uma **Entidade** é diferente de um Value Object porque **tem identidade**. Dois pedidos com o mesmo valor total não são o mesmo pedido — eles têm IDs diferentes.
+Uma **Entidade** é diferente de um Value Object porque **tem identidade** e **ciclo de vida**. Ela nasce, muda de estado e precisa ser rastreada ao longo do tempo. Dois pedidos com o mesmo valor total não são o mesmo pedido — eles têm IDs diferentes.
+
+**O teste para saber se algo é Entity:** tem ID próprio + muda de estado + precisa ser persistido/rastreado = Entity.
 
 **No nosso projeto:** `Order` é uma entidade identificada por `OrderId`. Ela agrupa os value objects e dados do pedido em um único objeto coeso.
+
+**Quando criar uma nova entity?** Exemplos de entidades que poderiam surgir neste projeto:
+
+- **`ExtractionLog`** — registra cada execução de extração. Tem ID, data de início/fim, quantidade de pedidos extraídos, status (sucesso/falha). Nasce a cada execução, muda de estado ("em andamento" → "concluído"), precisa ser consultada depois ("quando foi a última extração?").
+- **`Seller`** — se o sistema passasse a suportar múltiplos vendedores. Cada seller tem ID, credenciais (token ML), configurações próprias. Nasce quando cadastrado, pode ser desativado, tem histórico.
+- **`ExtractionSchedule`** — se cada plataforma/seller pudesse ter agendamentos diferentes. Tem ID, frequência, último horário de execução, estado (ativo/pausado). Muda ao longo do tempo.
+
+**Entity vs. Value Object — cuidado com a confusão:**
+
+Um erro comum é criar uma Entity para algo que é apenas um rótulo fixo. Exemplo: `Platform` ("Mercado Livre", "Shopee") **não é Entity** neste projeto — "Mercado Livre" não nasce, não morre, não muda de estado no nosso sistema. É um valor fixo e conhecido, ou seja, um **Value Object**.
+
+Se `Platform` fosse Entity, seria num sistema diferente — por exemplo, um SaaS onde o próprio usuário cadastra e configura plataformas dinamicamente:
+
+```typescript
+// AQUI sim Platform seria Entity — tem ciclo de vida e estado mutável
+export class Platform {
+  private _id: PlatformId;
+  private _name: string;
+  private _apiBaseUrl: string;
+  private _credentials: PlatformCredentials;
+  private _status: PlatformStatus; // active, suspended, configuring
+  private _rateLimitConfig: RateLimitConfig;
+  private _lastHealthCheck: Date;
+
+  activate() { ... }
+  suspend() { ... }
+  updateCredentials(creds: PlatformCredentials) { ... }
+}
+```
+
+**Regra prática:** se o conceito é como o **número 5** (valor, imutável, sempre igual a si mesmo) → Value Object. Se é como uma **conta bancária** (tem ID, saldo muda, precisa ser rastreada) → Entity.
+
+> **No nosso projeto:** novas plataformas não se "plugam" por uma Entity. Elas se plugam por **adapters que implementam o port `IPlatformClient`**. O enum `PlatformEnum` + Value Object resolvem o "de onde veio o pedido". O port + adapter resolvem o "como conectar".
 
 ### O que são Domain Errors (`domain/errors/`)
 
@@ -92,9 +127,48 @@ Erros tipados do domínio. Em vez de lançar `throw new Error("ID inválido")` (
 
 ### O que são Ports (`application/ports/`)
 
-**Ports** são **interfaces** — contratos abstratos que definem **o que** o sistema precisa, sem dizer **como**.
+**Ports** são contratos abstratos que definem **o que** o sistema precisa, sem dizer **como**.
 
-Existem dois tipos:
+#### Por que usamos `abstract class` em vez de `interface` nos ports?
+
+No TypeScript puro, um port seria uma `interface`:
+
+```typescript
+export interface IPlatformClient {
+  fetchOrders(params: FetchOrdersParams): Promise<Order[]>;
+}
+```
+
+O problema: uma `interface` **não existe em runtime**. Ela é apagada completamente na compilação para JavaScript. É apenas uma dica para o compilador.
+
+O NestJS precisa de um **token real** para a injeção de dependência — algo que exista em runtime para ele saber: "quando alguém pedir X, entrego Y". Uma interface apagada não pode ser esse token.
+
+Por isso usamos `abstract class`:
+
+```typescript
+export abstract class IPlatformClient {
+  abstract fetchOrders(params: FetchOrdersParams): Promise<Order[]>;
+}
+```
+
+Uma `abstract class`:
+- **Existe em runtime** — vira uma classe JavaScript real, pode ser usada como token de DI
+- **Não pode ser instanciada diretamente** — assim como uma interface, obriga alguém a implementar
+- **Define o contrato** — todo método `abstract` precisa ser implementado pela classe filha
+
+| Característica | `interface` | `abstract class` |
+|---|---|---|
+| Existe em runtime? | Não (apagada na compilação) | Sim (vira classe JS real) |
+| Pode ser token de DI no NestJS? | Não | Sim |
+| Pode ter implementação parcial? | Não | Sim (métodos não-abstract) |
+| Pode ser instanciada? | N/A | Não (precisa de `extends`) |
+| Suporta múltipla herança? | Sim (`implements A, B`) | Não (`extends` de uma só) |
+
+**Isso NÃO é o padrão Abstract Factory.** Abstract Factory é sobre criar *famílias de objetos relacionados*. Aqui é mais simples: usamos `abstract class` apenas porque precisamos de um contrato que sobreviva à compilação para funcionar como token de DI no NestJS. Conceitualmente, continua sendo um **Port** (contrato/interface) da arquitetura hexagonal.
+
+> **Regra:** se o projeto não usasse NestJS (ou qualquer DI container que precisa de tokens em runtime), `interface` seria a escolha correta e mais idiomática.
+
+Existem dois tipos de port:
 
 **Ports de entrada (`ports/in/`)** — definem o que o mundo externo pode pedir ao sistema:
 ```typescript
