@@ -1,28 +1,28 @@
 import { InvalidOrderIdError } from '../errors/DomainError';
 
 export class OrderId {
-  private value: number;
+  private _id: number;
 
-  private constructor(value: number) {
-    this.value = value;
+  private constructor(id: number) {
+    this._id = id;
   }
 
-  static create(value: number): OrderId {
-    if (!Number.isFinite(value) || value <= 0 || !Number.isInteger(value)) {
-      throw new InvalidOrderIdError(String(value));
+  static create(id: number): OrderId {
+    if (!Number.isFinite(id) || id <= 0 || !Number.isInteger(id)) {
+      throw new InvalidOrderIdError(String(id));
     }
-    return new OrderId(value);
+    return new OrderId(id);
   }
 
-  getValue(): number {
-    return this.value;
+  get id(): number {
+    return this._id;
   }
 
   equals(other: OrderId): boolean {
-    return this.getValue() === other.getValue();
+    return this._id === other._id;
   }
 
   toString(): string {
-    return String(this.value);
+    return String(this._id);
   }
 }
