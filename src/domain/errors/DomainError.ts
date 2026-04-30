@@ -17,3 +17,21 @@ export class InvalidOrderError extends DomainError {
     super(`Invalid order: ${reason}`);
   }
 }
+
+export class InvalidPlatformNotImplementedError extends DomainError {
+  constructor(errorMessage: string) {
+    super(`Error: ${errorMessage}`);
+  }
+}
+
+export class InvalidClientError extends DomainError {
+  constructor(reason: string) {
+    super(`Invalid client: ${reason}`);
+  }
+}
+
+export class InvalidStoreError extends DomainError {
+  constructor(reason: string) {
+    super(`Invalid store: ${reason}`);
+  }
+}
